@@ -2,12 +2,9 @@ pipeline {
     agent any
 
     environment {
-        // 1. Updated to your exact Docker Hub username
         DOCKER_USER = "monishab17"
-        
-        // 2. This must match the ID you created in Jenkins Credentials
+        // This must match the ID you created in Jenkins Credentials
         REGISTRY_CREDENTIALS = 'lab5'
-        
         IMAGE_NAME = "my_meg_app"
         CONTAINER_NAME = "my_meg_container"
     }
@@ -23,7 +20,6 @@ pipeline {
         stage('Build') {
             steps {
                 echo '🔨 Building Docker Image...'
-                // Tags the image correctly for your account
                 sh "docker build -t ${DOCKER_USER}/${IMAGE_NAME}:latest ."
             }
         }
@@ -37,12 +33,11 @@ pipeline {
 
         stage('Push to Docker Hub') {
             steps {
-                script {
-                    // This uses the 'docker-hub-creds' from your Jenkins Credentials vault
-                    docker.withRegistry('', "${REGISTRY_CREDENTIALS}") {
-                        echo '📤 Pushing Image to Docker Hub...'
-                        sh "docker push ${DOCKER_USER}/${IMAGE_NAME}:latest"
-                    }
+                // We use withCredentials to safely get your Docker Hub username and password
+                withCredentials([usernamePassword(credentialsId: "${REGISTRY_CREDENTIALS}", passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER_CRED')]) {
+                    echo '📤 Logging in and Pushing Image to Docker Hub...'
+                    sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER_CRED --password-stdin"
+                    sh "docker push ${DOCKER_USER}/${IMAGE_NAME}:latest"
                 }
             }
         }
@@ -50,6 +45,7 @@ pipeline {
         stage('Deploy Local') {
             steps {
                 echo '🚀 Refreshing Local Container...'
+                // Stop and remove container if it exists, then run the new one
                 sh "docker stop ${CONTAINER_NAME} || true"
                 sh "docker rm ${CONTAINER_NAME} || true"
                 sh "docker run -d -p 5000:5000 --name ${CONTAINER_NAME} ${DOCKER_USER}/${IMAGE_NAME}:latest"
